@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redactle JP — 漢字推理ゲーム</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --accent: #e94560;
+  --text: #eee;
+  --muted: #888;
+  --revealed: #0f3460;
+  --kanji-hidden: #e94560;
+  --kanji-found: #4ecca3;
+  --win: #4ecca3;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+header {
+  text-align: center;
+  padding: 1.5rem 1rem 1rem;
+  border-bottom: 2px solid var(--accent);
+}
+header h1 { font-size: 2rem; letter-spacing: 0.1em; }
+header h1 span { color: var(--accent); }
+header p { color: var(--muted); margin-top: 0.3rem; font-size: 0.9rem; }
+
+.container { max-width: 800px; margin: 0 auto; padding: 1rem; }
+
+#stats {
+  display: flex; gap: 1.5rem; justify-content: center;
+  padding: 0.8rem; margin: 1rem 0;
+  background: var(--surface); border-radius: 8px;
+  font-size: 0.95rem;
+}
+#stats .stat-label { color: var(--muted); font-size: 0.8rem; }
+#stats .stat-value { font-size: 1.3rem; font-weight: bold; }
+
+#guess-form {
+  display: flex; gap: 0.5rem; margin: 1rem 0;
+  justify-content: center;
+}
+#guess-input {
+  font-size: 1.5rem; width: 4rem; text-align: center;
+  padding: 0.5rem; border: 2px solid var(--accent);
+  border-radius: 8px; background: var(--surface);
+  color: var(--text); outline: none;
+}
+#guess-input:focus { border-color: var(--win); }
+#guess-btn {
+  padding: 0.5rem 1.5rem; font-size: 1rem;
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; cursor: pointer; font-weight: bold;
+}
+#guess-btn:hover { opacity: 0.9; }
+
+#message {
+  text-align: center; min-height: 1.5rem;
+  margin: 0.5rem 0; font-size: 0.95rem;
+}
+.msg-dup { color: var(--muted); }
+.msg-hit { color: var(--win); }
+.msg-miss { color: var(--accent); }
+
+#article-container {
+  background: var(--surface); border-radius: 8px;
+  padding: 1.5rem; margin: 1rem 0;
+  line-height: 2.2; font-size: 1.1rem;
+  max-height: 60vh; overflow-y: auto;
+}
+
+.kanji-hidden {
+  display: inline-block;
+  background: var(--kanji-hidden);
+  color: transparent;
+  border-radius: 3px;
+  min-width: 1.1em;
+  text-align: center;
+  cursor: default;
+  user-select: none;
+  transition: all 0.3s;
+}
+.kanji-revealed {
+  color: var(--win);
+  font-weight: bold;
+  transition: all 0.3s;
+}
+.title-char {
+  font-size: 1.8rem;
+}
+.title-kanji-hidden {
+  display: inline-block;
+  background: var(--kanji-hidden);
+  color: transparent;
+  border-radius: 3px;
+  min-width: 1.3em;
+  text-align: center;
+  font-size: 1.8rem;
+}
+
+#title-display {
+  text-align: center; font-size: 1.8rem;
+  margin: 1rem 0; letter-spacing: 0.15em;
+  font-weight: bold;
+}
+
+#guess-log {
+  background: var(--surface); border-radius: 8px;
+  padding: 1rem; margin: 1rem 0;
+}
+#guess-log h3 { margin-bottom: 0.5rem; color: var(--muted); font-size: 0.9rem; }
+#guess-list {
+  display: flex; flex-wrap: wrap; gap: 0.4rem;
+  max-height: 8rem; overflow-y: auto;
+}
+.guess-tag {
+  padding: 0.2rem 0.6rem; border-radius: 4px;
+  font-size: 0.95rem;
+}
+.guess-hit { background: rgba(78, 204, 163, 0.2); color: var(--win); }
+.guess-miss { background: rgba(233, 69, 96, 0.15); color: var(--accent); }
+
+#win-banner {
+  display: none; text-align: center;
+  padding: 1.5rem; margin: 1rem 0;
+  background: rgba(78, 204, 163, 0.1);
+  border: 2px solid var(--win);
+  border-radius: 8px;
+}
+#win-banner h2 { color: var(--win); font-size: 1.5rem; }
+#win-banner p { margin-top: 0.5rem; }
+
+#how-to-play {
+  background: var(--surface); border-radius: 8px;
+  padding: 1rem; margin: 1rem 0;
+  font-size: 0.9rem; color: var(--muted);
+}
+#how-to-play h3 { color: var(--text); margin-bottom: 0.5rem; }
+#how-to-play li { margin-left: 1.2rem; margin-bottom: 0.3rem; }
+
+footer {
+  text-align: center; padding: 1rem;
+  color: var(--muted); font-size: 0.8rem;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔍 <span>Redactle</span> JP</h1>
+  <p>漢字を推理してWikipedia記事のタイトルを当てよう</p>
+</header>
+
+<div class="container">
+  <div id="title-display"></div>
+
+  <div id="stats">
+    <div><div class="stat-label">推測回数</div><div class="stat-value" id="guess-count">0</div></div>
+    <div><div class="stat-label">的中</div><div class="stat-value" id="hit-count">0</div></div>
+    <div><div class="stat-label">残り漢字</div><div class="stat-value" id="remaining-count">0</div></div>
+  </div>
+
+  <form id="guess-form">
+    <input type="text" id="guess-input" maxlength="1" placeholder="漢" autocomplete="off" />
+    <button type="submit" id="guess-btn">推測</button>
+  </form>
+  <div id="message"></div>
+
+  <div id="win-banner">
+    <h2>🎉 正解！</h2>
+    <p id="win-text"></p>
+  </div>
+
+  <div id="article-container"></div>
+
+  <div id="guess-log">
+    <h3>推測履歴</h3>
+    <div id="guess-list"></div>
+  </div>
+
+  <div id="how-to-play">
+    <h3>📖 遊び方</h3>
+    <ul>
+      <li>記事中の<b>漢字</b>がすべて隠されています（赤いブロック）</li>
+      <li>ひらがな・カタカナ・数字・記号はそのまま表示されます</li>
+      <li>漢字を1文字ずつ推測して、記事のタイトルを当ててください</li>
+      <li>推測した漢字が記事に含まれていれば、すべての箇所が明かされます</li>
+      <li>タイトルの全漢字を当てればクリア！</li>
+      <li>毎日新しい記事が出題されます</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Redactle JP — 日本語Wikipedia漢字推理ゲーム<br>
+  Inspired by <a href="https://redactle.net/" style="color:var(--accent)">Redactle</a>
+</footer>
+
+<script>
+let articles = [];
+let currentArticle = null;
+let guessedKanji = new Set();
+let guessHistory = [];
+let titleKanji = new Set();
+let articleKanji = new Set();
+let won = false;
+
+const KANJI_RE = /[\u4e00-\u9faf\u3400-\u4dbf]/;
+
+function isKanji(ch) {
+  return KANJI_RE.test(ch);
+}
+
+function getDayIndex() {
+  // Consistent daily puzzle based on JST date
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const dayStr = jst.toISOString().slice(0, 10);
+  let hash = 0;
+  for (let i = 0; i < dayStr.length; i++) {
+    hash = ((hash << 5) - hash + dayStr.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function renderText(text, container, isTitle) {
+  container.innerHTML = '';
+  for (const ch of text) {
+    const span = document.createElement('span');
+    if (isKanji(ch)) {
+      if (guessedKanji.has(ch)) {
+        span.textContent = ch;
+        span.className = isTitle ? 'title-char kanji-revealed' : 'kanji-revealed';
+      } else {
+        span.textContent = ch;
+        span.className = isTitle ? 'title-kanji-hidden' : 'kanji-hidden';
+      }
+    } else {
+      span.textContent = ch;
+      if (isTitle) span.className = 'title-char';
+    }
+    container.appendChild(span);
+  }
+}
+
+function updateDisplay() {
+  const titleEl = document.getElementById('title-display');
+  const articleEl = document.getElementById('article-container');
+  renderText(currentArticle.title, titleEl, true);
+
+  // For performance, build HTML string for article
+  let html = '';
+  for (const ch of currentArticle.text) {
+    if (isKanji(ch)) {
+      if (guessedKanji.has(ch)) {
+        html += `<span class="kanji-revealed">${ch}</span>`;
+      } else {
+        html += `<span class="kanji-hidden">${ch}</span>`;
+      }
+    } else if (ch === '\n') {
+      html += '<br>';
+    } else {
+      html += ch;
+    }
+  }
+  articleEl.innerHTML = html;
+
+  // Stats
+  const remaining = [...titleKanji].filter(k => !guessedKanji.has(k)).length;
+  document.getElementById('guess-count').textContent = guessHistory.length;
+  document.getElementById('hit-count').textContent = guessHistory.filter(g => g.hit).length;
+  document.getElementById('remaining-count').textContent = remaining;
+
+  // Guess log
+  const logEl = document.getElementById('guess-list');
+  logEl.innerHTML = guessHistory.map(g =>
+    `<span class="guess-tag ${g.hit ? 'guess-hit' : 'guess-miss'}">${g.kanji} ${g.hit ? `(${g.count})` : '✗'}</span>`
+  ).join('');
+
+  // Check win
+  if (remaining === 0 && !won) {
+    won = true;
+    const banner = document.getElementById('win-banner');
+    banner.style.display = 'block';
+    document.getElementById('win-text').textContent =
+      `「${currentArticle.title}」を${guessHistory.length}回の推測で当てました！`;
+    document.getElementById('guess-input').disabled = true;
+    document.getElementById('guess-btn').disabled = true;
+    // Reveal all
+    guessedKanji = new Set([...articleKanji]);
+    renderText(currentArticle.title, titleEl, true);
+    // Re-render article with all revealed
+    let fullHtml = '';
+    for (const ch of currentArticle.text) {
+      if (isKanji(ch)) {
+        fullHtml += `<span class="kanji-revealed">${ch}</span>`;
+      } else if (ch === '\n') {
+        fullHtml += '<br>';
+      } else {
+        fullHtml += ch;
+      }
+    }
+    articleEl.innerHTML = fullHtml;
+  }
+}
+
+function showMessage(text, cls) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = cls;
+  setTimeout(() => { el.textContent = ''; el.className = ''; }, 3000);
+}
+
+function handleGuess(kanji) {
+  if (!isKanji(kanji)) {
+    showMessage('漢字を1文字入力してください', 'msg-miss');
+    return;
+  }
+  if (guessedKanji.has(kanji)) {
+    showMessage(`「${kanji}」は推測済みです`, 'msg-dup');
+    return;
+  }
+  guessedKanji.add(kanji);
+  const count = [...currentArticle.text, ...currentArticle.title].filter(c => c === kanji).length;
+  const hit = count > 0;
+  guessHistory.push({ kanji, hit, count });
+
+  if (hit) {
+    showMessage(`「${kanji}」: ${count}箇所 見つかりました！`, 'msg-hit');
+  } else {
+    showMessage(`「${kanji}」は記事に含まれていません`, 'msg-miss');
+  }
+
+  saveState();
+  updateDisplay();
+}
+
+function saveState() {
+  const state = {
+    dayIndex: getDayIndex(),
+    guessedKanji: [...guessedKanji],
+    guessHistory,
+    won,
+  };
+  localStorage.setItem('redactle-jp-state', JSON.stringify(state));
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem('redactle-jp-state');
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    if (state.dayIndex !== getDayIndex()) return false;
+    guessedKanji = new Set(state.guessedKanji);
+    guessHistory = state.guessHistory || [];
+    won = state.won || false;
+    return true;
+  } catch { return false; }
+}
+
+async function init() {
+  const res = await fetch('articles.json');
+  articles = await res.json();
+
+  const idx = getDayIndex() % articles.length;
+  currentArticle = articles[idx];
+
+  // Build kanji sets
+  for (const ch of currentArticle.title) {
+    if (isKanji(ch)) titleKanji.add(ch);
+  }
+  for (const ch of currentArticle.text + currentArticle.title) {
+    if (isKanji(ch)) articleKanji.add(ch);
+  }
+
+  loadState();
+
+  if (won) {
+    document.getElementById('guess-input').disabled = true;
+    document.getElementById('guess-btn').disabled = true;
+    const banner = document.getElementById('win-banner');
+    banner.style.display = 'block';
+    document.getElementById('win-text').textContent =
+      `「${currentArticle.title}」を${guessHistory.length}回の推測で当てました！`;
+    guessedKanji = new Set([...articleKanji]);
+  }
+
+  updateDisplay();
+
+  document.getElementById('guess-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('guess-input');
+    const val = input.value.trim();
+    if (val) handleGuess(val);
+    input.value = '';
+    input.focus();
+  });
+
+  document.getElementById('guess-input').focus();
+}
+
+init();
+</script>
+</body>
+</html>
