@@ -61,6 +61,19 @@ async function main() {
           text = text.substring(0, 3000);
         }
       }
+      // Aggressively strip all parenthetical content that looks like readings,
+      // translations, or pronunciation guides. This catches:
+      // （ふじさん）, (Tokyo Metropolis), （げんじものがたり、英語: The Tale of Genji）
+      // Keep parenthetical content only if it's primarily kanji content (actual info)
+      text = text.replace(/[（(][^)）]*[)）]/g, (match) => {
+        // Count kanji vs non-kanji non-punctuation chars
+        const inner = match.slice(1, -1);
+        const kanjiCount = (inner.match(/[\u4e00-\u9faf\u3400-\u4dbf]/g) || []).length;
+        const totalChars = inner.replace(/[\s、。,.;:：・\-–—]/g, '').length;
+        // Keep only if majority is kanji (actual informational content)
+        if (totalChars > 0 && kanjiCount / totalChars > 0.5) return match;
+        return '';
+      });
       articles.push({ title: article.title, text });
     }
     // Rate limit
